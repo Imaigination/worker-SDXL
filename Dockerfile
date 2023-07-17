@@ -23,7 +23,7 @@ RUN pip install --upgrade pip && \
 # Fetch model
 COPY builder/cache_models.py /cache_models.py
 ARG HUGGING_FACE_HUB_TOKEN
-ENV HUGGING_FACE_HUB_TOKEN ${HUGGING_FACE_HUB_TOKEN}
+ENV HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
 
 RUN python /cache_models.py
 RUN rm /cache_models.py
