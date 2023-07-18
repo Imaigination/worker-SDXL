@@ -50,12 +50,14 @@ def generate_image(job):
     
     prompt = validated_input['validated_input']['prompt']
     num_inference_steps = validated_input['validated_input']['num_inference_steps']
-
+    num_images_per_prompt = validated_input['validated_input']['samples']
+    width = validated_input['validated_input']['width'],
+    height = validated_input['validated_input']['height'],
     # Generate latent image using pipe
-    image = pipe(prompt=prompt,num_inference_steps=num_inference_steps , output_type="latent").images[0]
+    image = pipe(prompt=prompt,width=width, height=height,num_images_per_prompt=num_images_per_prompt, num_inference_steps=num_inference_steps , output_type="latent").images[0]
 
     # Refine the image using refiner
-    output = refiner(prompt=prompt, num_inference_steps=num_inference_steps, image=image[None, :]).images[0]
+    output = refiner(prompt=prompt,width=width, height=height,num_images_per_prompt=num_images_per_prompt, num_inference_steps=num_inference_steps, image=image[None, :]).images[0]
 
     image_urls = _save_and_upload_images([output], job['id'])
 
