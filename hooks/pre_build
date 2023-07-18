@@ -1,3 +1,2 @@
 #!/bin/bash
-export  HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
-echo "Hugging Face Hub Token: ${HUGGING_FACE_HUB_TOKEN}"
+docker build --build-arg HUGGING_FACE_HUB_TOKEN=$HUGGING_FACE_HUB_TOKEN -f $DOCKERFILE_PATH -t $IMAGE_NAME .
