@@ -8,4 +8,4 @@ opencv-python>=4.1.0.25
 invisible-watermark
 runpod==0.10.0
 xformers==0.0.20
-huggingface-hub==0.16.4
+huggingface-hub
