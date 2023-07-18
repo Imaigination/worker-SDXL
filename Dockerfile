@@ -10,6 +10,10 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONBUFFERED 1
 ENV DEBIAN_FRONTEND noninteractive
 
+ARG HUGGING_FACE_HUB_TOKEN
+ENV HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+RUN echo "Hugging Face Hub Token: ${HUGGING_FACE_HUB_TOKEN}"
+
 # Install packages
 COPY builder/packages.sh /packages.sh
 RUN /bin/bash /packages.sh && rm /packages.sh
@@ -22,8 +26,7 @@ RUN pip install --upgrade pip && \
 
 # Fetch model
 COPY builder/cache_models.py /cache_models.py
-ARG HUGGING_FACE_HUB_TOKEN
-ENV HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+
 
 RUN python /cache_models.py
 RUN rm /cache_models.py
