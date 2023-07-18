@@ -13,16 +13,23 @@ from runpod.serverless.utils.rp_validator import validate
 
 from rp_schemas import INPUT_SCHEMA
 
+device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
+dtype = torch.float16 if device == 'cuda' else torch.float32
 # Setup the models
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=dtype, variant="fp16", use_safetensors=True
 )
-pipe.to("cuda")
-
+#pipe.to(device)
+if device != 'cuda':
+    #pipe.enable_xformers_amp()
+    pipe.enable_attention_slicing()
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
 )
-refiner.to("cuda")
+#refiner.to(device)
+if device != 'cuda':
+    #pipe.enable_xformers_amp()
+    refiner.enable_attention_slicing()
 
 def _save_and_upload_images(images, job_id):
     os.makedirs(f"/{job_id}", exist_ok=True)

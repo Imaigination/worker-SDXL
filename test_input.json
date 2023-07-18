@@ -1,0 +1,9 @@
+{
+    "input": {
+        "prompt": "cat riding unicorn",
+        "width": 512,
+        "height": 512,
+        "samples": 1,
+        "num_inference_steps": 2
+     }
+}
