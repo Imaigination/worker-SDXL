@@ -58,9 +58,14 @@ def generate_image(job):
     prompt = validated_input['validated_input']['prompt']
     num_inference_steps = validated_input['validated_input']['num_inference_steps']
     num_images_per_prompt = validated_input['validated_input']['samples']
-    width = validated_input['validated_input']['width'],
-    height = validated_input['validated_input']['height'],
+    width = validated_input['validated_input']['width']
+    height = validated_input['validated_input']['height']
     # Generate latent image using pipe
+    print(f"Generating latent image for prompt: {prompt}")
+    print(f"Using {num_inference_steps} inference steps")
+    print(f"Generating {num_images_per_prompt} images per prompt")
+    print(f"Image size: {width}x{height}")
+    print(f'Validated input: {validated_input}')
     image = pipe(prompt=prompt,width=width, height=height,num_images_per_prompt=num_images_per_prompt, num_inference_steps=num_inference_steps , output_type="latent").images[0]
 
     # Refine the image using refiner
