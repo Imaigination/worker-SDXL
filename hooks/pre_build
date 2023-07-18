@@ -1,4 +1,3 @@
 #!/bin/bash
 export  HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
 echo "Hugging Face Hub Token: ${HUGGING_FACE_HUB_TOKEN}"
-```
