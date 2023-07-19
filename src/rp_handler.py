@@ -24,7 +24,7 @@ if device != 'cuda':
     #pipe.enable_xformers_amp()
     pipe.enable_attention_slicing()
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+    "stabilityai/stable-diffusion-xl-refiner-0.9", torch_dtype=dtype, use_safetensors=True, variant="fp16"
 )
 #refiner.to(device)
 if device != 'cuda':
@@ -32,10 +32,10 @@ if device != 'cuda':
     refiner.enable_attention_slicing()
 
 def _save_and_upload_images(images, job_id):
-    os.makedirs(f"/{job_id}", exist_ok=True)
+    os.makedirs(f"{job_id}", exist_ok=True)
     image_urls = []
     for index, image in enumerate(images):
-        image_path = os.path.join(f"/{job_id}", f"{index}.png")
+        image_path = os.path.join(f"{job_id}", f"{index}.png")
         image.save(image_path)
 
         image_url = rp_upload.upload_image(job_id, image_path)
@@ -66,12 +66,12 @@ def generate_image(job):
     print(f"Generating {num_images_per_prompt} images per prompt")
     print(f"Image size: {width}x{height}")
     print(f'Validated input: {validated_input}')
-    image = pipe(prompt=prompt,width=width, height=height,num_images_per_prompt=num_images_per_prompt, num_inference_steps=num_inference_steps , output_type="latent").images[0]
-
+    pipe_data = pipe(prompt=prompt,width=width, height=height,num_images_per_prompt=num_images_per_prompt, num_inference_steps=num_inference_steps , output_type="latent")
+    print(f"Generated pipe_data: {pipe_data}")
     # Refine the image using refiner
-    output = refiner(prompt=prompt,width=width, height=height,num_images_per_prompt=num_images_per_prompt, num_inference_steps=num_inference_steps, image=image[None, :]).images[0]
+    output = refiner(prompt=prompt,image=pipe_data.images).images
 
-    image_urls = _save_and_upload_images([output], job['id'])
+    image_urls = _save_and_upload_images(output, job['id'])
 
     return {"image_url": image_urls[0]} if len(image_urls) == 1 else {"images": image_urls}
 
