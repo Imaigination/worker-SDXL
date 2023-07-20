@@ -4,6 +4,7 @@ Contains the handler function that will be called by the serverless.
 
 import os
 import torch
+import time
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 from diffusers.utils import load_image
 
@@ -35,13 +36,13 @@ if device != 'cuda':
     refiner.enable_attention_slicing()
 
 def _save_and_upload_images(images, job_id):
-    os.makedirs(f"{job_id}", exist_ok=True)
+    # os.makedirs(f"{job_id}", exist_ok=True)
     base64_images = []
     for index, image in enumerate(images):
-        image_path = os.path.join(f"{job_id}", f"{index}.png")
-        image.save(image_path)
+        # image_path = os.path.join(f"{job_id}", f"{index}.png")
+        # image.save(image_path)
 
-        image_url = rp_upload.upload_image(job_id, image_path)
+        # image_url = rp_upload.upload_image(job_id, image_path)
         base64_images.append(base64.b64encode(image.tobytes()))
     rp_cleanup.clean([f"/{job_id}"])
     return base64_images
@@ -55,7 +56,7 @@ def img2img(job_input, job_id):
     if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
     generator = torch.Generator("cuda").manual_seed(seed)
-
+    start = time.time()
     width = validated_input['validated_input']['width']
     height = validated_input['validated_input']['height']
     image_url = validated_input['validated_input']['init_image']
@@ -68,6 +69,8 @@ def img2img(job_input, job_id):
     guidance_scale = validated_input['validated_input']['guidance_scale']
     output = refiner(prompt,generator=generator, image=init_image,num_images_per_prompt=num_images_per_prompt,num_inference_steps = num_inference_steps,negative_prompt= negative_prompt, strength=strength, guidance_scale=guidance_scale).images
     images = _save_and_upload_images(output,job_id)
+    end = time.time()
+    generation_time = end - start
     return {
         "images": images,
         "seed": seed,
@@ -75,7 +78,8 @@ def img2img(job_input, job_id):
         "width": width,
         "height": height,
         "samples": num_images_per_prompt,
-        "num_inference_steps": num_inference_steps
+        "num_inference_steps": num_inference_steps,
+        "generation_time": generation_time
     }
 
 def text2text(job_input, job_id):
@@ -87,6 +91,7 @@ def text2text(job_input, job_id):
     seed = validated_input['validated_input']['seed']
     if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
+    start = time.time()
     generator = torch.Generator("cuda").manual_seed(seed)
     prompt = validated_input['validated_input']['prompt']
     num_inference_steps = validated_input['validated_input']['num_inference_steps']
@@ -110,6 +115,8 @@ def text2text(job_input, job_id):
     
 
     images = _save_and_upload_images(output,job_id)
+    end = time.time()
+    generation_time = end - start
     return {
         "images": images,
         "seed": seed,
@@ -117,7 +124,8 @@ def text2text(job_input, job_id):
         "width": width,
         "height": height,
         "samples": num_images_per_prompt,
-        "num_inference_steps": num_inference_steps
+        "num_inference_steps": num_inference_steps,
+        "generation_time": generation_time
     }
 
 def generate_image(job):
