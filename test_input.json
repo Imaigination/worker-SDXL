@@ -1,9 +1,15 @@
 {
     "input": {
-        "prompt": "cat riding unicorn",
-        "width": 512,
-        "height": 512,
-        "samples": 1,
-        "num_inference_steps": 2
+        "api_name": "text2text",
+        "prompt": "hyper-realistic cat,8k, cinematic, uhd",
+        "negative_prompt": "canvas frame, cartoon, 3d, ((disfigured)), ((bad art)), ((deformed)),((extra limbs)),((close up)),((b&w)), wierd colors, blurry, (((duplicate))), ((morbid)), ((mutilated)), [out of frame], extra fingers, mutated hands, ((poorly drawn hands)), ((poorly drawn face)), (((mutation))), (((deformed))), ((ugly)), blurry, ((bad anatomy)), (((bad proportions))), ((extra limbs)), cloned face, (((disfigured))), out of frame, ugly, extra limbs, (bad anatomy), gross proportions, (malformed limbs), ((missing arms)), ((missing legs)), (((extra arms))), (((extra legs))), mutated hands, (fused fingers), (too many fingers), (((long neck))), Photoshop, video game, ugly, tiling, poorly drawn hands, poorly drawn feet, poorly drawn face, out of frame, mutation, mutated, extra limbs, extra legs, extra arms, disfigured, deformed, cross-eye, body out of frame, blurry, bad art, bad anatomy, 3d render ENSD: 31337",
+        "width": 896,
+        "init_image": "https://cdn.stablediffusionapi.com/generations/da55684e-af20-4106-9801-567d287e2731-0.png",
+        "height": 1152,
+        "samples": 3,
+        "seed": 51218,
+        "strength": 0.7,
+        "guidance_scale": 7.5,
+        "num_inference_steps": 60
      }
 }
