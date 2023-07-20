@@ -5,6 +5,10 @@ import torch
 import huggingface_hub
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 def get_diffusion_pipelines():
     print(F'TOKEN = {os.environ["HUGGING_FACE_HUB_TOKEN"]}')
     from huggingface_hub.hf_api import HfFolder;

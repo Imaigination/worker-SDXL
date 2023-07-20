@@ -3,6 +3,7 @@ transformers
 accelerate
 safetensors
 numpy>=1.17
+python-dotenv==1.0.0
 PyWavelets>=1.1.1
 opencv-python>=4.1.0.25
 invisible-watermark

@@ -13,9 +13,10 @@ import base64
 from runpod.serverless.utils import rp_upload, rp_cleanup
 from diffusers.models import AutoencoderKL
 from runpod.serverless.utils.rp_validator import validate
-
+from dotenv import load_dotenv
 from rp_schemas import INPUT_SCHEMA
 
+load_dotenv()
 device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
 dtype = torch.float16 if device == 'cuda' else torch.float32
 vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae")
@@ -36,16 +37,18 @@ if device != 'cuda':
     refiner.enable_attention_slicing()
 
 def _save_and_upload_images(images, job_id):
-    # os.makedirs(f"{job_id}", exist_ok=True)
-    base64_images = []
+    os.makedirs(f"{job_id}", exist_ok=True)
+    # base64_images = []
+    response = []
     for index, image in enumerate(images):
-        # image_path = os.path.join(f"{job_id}", f"{index}.png")
-        # image.save(image_path)
-
-        # image_url = rp_upload.upload_image(job_id, image_path)
-        base64_images.append(base64.b64encode(image.tobytes()))
+        image_path = os.path.join(f"{job_id}", f"{index}.png")
+        image.save(image_path)
+        image_url = rp_upload.upload_image(job_id, image_path)
+        print(f'URL={image_url}')
+        response.append(image_url)
+        # base64_images.append(base64.b64encode(image.tobytes()))
     rp_cleanup.clean([f"/{job_id}"])
-    return base64_images
+    return response
 
 def img2img(job_input, job_id):
     validated_input = validate(job_input, INPUT_SCHEMA)
@@ -113,10 +116,12 @@ def text2text(job_input, job_id):
     for img in pipe_data.images:
         output.append(refiner(prompt=prompt, generator=generator, num_inference_steps=num_inference_steps,image=img[None, :]).images[0])
     
-
+    start_upload = time.time()
     images = _save_and_upload_images(output,job_id)
+    end_upload = time.time()
     end = time.time()
     generation_time = end - start
+    upload_time = end_upload - start_upload
     return {
         "images": images,
         "seed": seed,
@@ -125,7 +130,8 @@ def text2text(job_input, job_id):
         "height": height,
         "samples": num_images_per_prompt,
         "num_inference_steps": num_inference_steps,
-        "generation_time": generation_time
+        "generation_time": generation_time,
+        "upload_time": upload_time
     }
 
 def generate_image(job):
