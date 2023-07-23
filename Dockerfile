@@ -30,8 +30,8 @@ RUN pip install --upgrade pip && \
 COPY builder/cache_models.py /cache_models.py
 
 
-RUN python /cache_models.py
-RUN rm /cache_models.py
+# RUN python /cache_models.py
+# RUN rm /cache_models.py
 
 ADD src .
 

@@ -19,17 +19,24 @@ from rp_schemas import INPUT_SCHEMA
 load_dotenv()
 device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
 dtype = torch.float16 if device == 'cuda' else torch.float32
-vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae")
+vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae", cache_dir = "./models")
 # Setup the models
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-0.9",vae=vae, torch_dtype=dtype, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-0.9",
+    cache_dir = "./models",
+    vae=vae, torch_dtype=dtype, variant="fp16", use_safetensors=True
 )
 pipe.to(device)
 if device != 'cuda':
     #pipe.enable_xformers_amp()
     pipe.enable_attention_slicing()
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9",vae =vae, torch_dtype=dtype, use_safetensors=True, variant="fp16"
+    "stabilityai/stable-diffusion-xl-refiner-0.9",
+    cache_dir = "./models",
+    vae =vae,
+    torch_dtype=dtype,
+    use_safetensors=True, 
+    variant="fp16"
 )
 refiner.to(device)
 if device != 'cuda':
