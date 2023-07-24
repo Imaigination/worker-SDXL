@@ -14,6 +14,7 @@ from runpod.serverless.utils import rp_upload, rp_cleanup
 from diffusers.models import AutoencoderKL
 from runpod.serverless.utils.rp_validator import validate
 from dotenv import load_dotenv
+from diffusers.schedulers import DDIMScheduler,LMSDiscreteScheduler,PNDMScheduler
 from rp_schemas import INPUT_SCHEMA
 
 load_dotenv()
@@ -21,15 +22,25 @@ device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.c
 dtype = torch.float16 if device == 'cuda' else torch.float32
 vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae", cache_dir = "./models")
 # Setup the models
+# scheduler ([`SchedulerMixin`]):
+#             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+#             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
 pipe = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-0.9",
     cache_dir = "./models",
-    vae=vae, torch_dtype=dtype, variant="fp16", use_safetensors=True
+    vae=vae,
+    torch_dtype=dtype, 
+    variant="fp16",
+    use_safetensors=True
+    
 )
+# scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
+# pipe.scheduler = scheduler
 pipe.to(device)
+#pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 if device != 'cuda':
-    #pipe.enable_xformers_amp()
     pipe.enable_attention_slicing()
+
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-0.9",
     cache_dir = "./models",
@@ -45,17 +56,21 @@ if device != 'cuda':
 
 def _save_and_upload_images(images, job_id):
     os.makedirs(f"{job_id}", exist_ok=True)
-    # base64_images = []
+    base64_images = []
     response = []
+    paths= []
     for index, image in enumerate(images):
         image_path = os.path.join(f"{job_id}", f"{index}.png")
         image.save(image_path)
-        image_url = rp_upload.upload_image(job_id, image_path)
-        print(f'URL={image_url}')
-        response.append(image_url)
+        paths.append(image_path)
+        
         # base64_images.append(base64.b64encode(image.tobytes()))
+    image_urls = rp_upload.files(job_id, paths)
+    print(f'URL={image_urls}')
+    response.append(image_urls)
     rp_cleanup.clean([f"/{job_id}"])
-    return response
+    # return base64_images
+    return image_urls
 
 def img2img(job_input, job_id):
     validated_input = validate(job_input, INPUT_SCHEMA)
@@ -77,7 +92,9 @@ def img2img(job_input, job_id):
     prompt = validated_input['validated_input']['prompt']
     strength = validated_input['validated_input']['strength']
     guidance_scale = validated_input['validated_input']['guidance_scale']
-    output = refiner(prompt,generator=generator, image=init_image,num_images_per_prompt=num_images_per_prompt,num_inference_steps = num_inference_steps,negative_prompt= negative_prompt, strength=strength, guidance_scale=guidance_scale).images
+    refiner_strength = validated_input['validated_input']['refiner_strength']
+    output = refiner(prompt,generator=generator, image=init_image,num_images_per_prompt=num_images_per_prompt,
+        num_inference_steps = num_inference_steps,negative_prompt= negative_prompt, strength=strength, guidance_scale=guidance_scale).images
     images = _save_and_upload_images(output,job_id)
     end = time.time()
     generation_time = end - start
@@ -107,6 +124,9 @@ def text2text(job_input, job_id):
     num_inference_steps = validated_input['validated_input']['num_inference_steps']
     num_images_per_prompt = validated_input['validated_input']['samples']
     width = validated_input['validated_input']['width']
+    negative_prompt = validated_input['validated_input']['negative_prompt']
+    refiner_strength = validated_input['validated_input']['refiner_strength']
+    guidance_scale = validated_input['validated_input']['guidance_scale']
     height = validated_input['validated_input']['height']
     # Generate latent image using pipe
     print(f"Generating latent image for prompt: {prompt}")
@@ -114,15 +134,36 @@ def text2text(job_input, job_id):
     print(f"Generating {num_images_per_prompt} images per prompt")
     print(f"Image size: {width}x{height}")
     print(f'Validated input: {validated_input}')
-    steps = num_inference_steps * 0.8
-    pipe_data = pipe(prompt=prompt,width=width, generator=generator, height=height,num_images_per_prompt=num_images_per_prompt, num_inference_steps=steps , output_type="latent")
- 
+    with_refiner = refiner_strength > 0
+    steps = num_inference_steps if not  with_refiner else num_inference_steps * (1 - refiner_strength)
+    output_type = 'pil' if not with_refiner else 'latent'
+    pipe_data = pipe(prompt=prompt,
+                    width=width,
+                    guidance_scale=guidance_scale,
+                    negative_prompt= negative_prompt,
+                    generator=generator,
+                    height=height,
+                    num_images_per_prompt=num_images_per_prompt,
+                    num_inference_steps=steps,
+                    
+                    output_type=output_type)
+    print(f'Use refiner = {with_refiner}, output type = {output_type}')
     # Refine the image using refiner
 
     output = []
-    for img in pipe_data.images:
-        output.append(refiner(prompt=prompt, generator=generator, num_inference_steps=num_inference_steps,image=img[None, :]).images[0])
-    
+    if with_refiner:
+        for img in pipe_data.images:
+            output.append(refiner(
+                prompt=prompt,
+                generator=generator,
+                negative_prompt= negative_prompt,
+                guidance_scale=guidance_scale,
+                strength=refiner_strength,
+                num_inference_steps=num_inference_steps,
+                image=img[None, :]
+            ).images[0])
+    else:
+        output = pipe_data.images
     start_upload = time.time()
     images = _save_and_upload_images(output,job_id)
     end_upload = time.time()

@@ -12,6 +12,11 @@ INPUT_SCHEMA = {
         'required': False,
         'default': None
     },
+    'use_vae': {
+        'type': bool,
+        'required': False,
+        'default': True
+    },
     'width': {
         'type': int,
         'required': False,
@@ -52,6 +57,12 @@ INPUT_SCHEMA = {
         'required': False,
         'default': 7.5,
         'constraints': lambda guidance_scale: 0 < guidance_scale < 20
+    },
+    'refiner_strength': {
+        'type': float,
+        'required': False,
+        'default': 0,
+        'constraints': lambda refiner_strength: 0 <= refiner_strength < 1
     },
     'seed': {
         'type': int,
