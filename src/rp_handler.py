@@ -37,7 +37,7 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 # scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
 # pipe.scheduler = scheduler
 pipe.to(device)
-#pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 if device != 'cuda':
     pipe.enable_attention_slicing()
 
