@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from diffusers.schedulers import DDIMScheduler,LMSDiscreteScheduler,PNDMScheduler
 from rp_schemas import INPUT_SCHEMA
 
+
 load_dotenv()
 device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
 dtype = torch.float16 if device == 'cuda' else torch.float32
