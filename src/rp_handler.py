@@ -18,16 +18,18 @@ from diffusers.schedulers import DDIMScheduler,LMSDiscreteScheduler,PNDMSchedule
 from rp_schemas import INPUT_SCHEMA
 
 load_dotenv()
+models_dir =os.getenv("CACHE_DIR", "./models")
+print(f'Using models dir: {models_dir}')
 device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
 dtype = torch.float16 if device == 'cuda' else torch.float32
-vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae", cache_dir = "/runpod-volume/models")
+vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae", cache_dir = models_dir)
 # Setup the models
 # scheduler ([`SchedulerMixin`]):
 #             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
 #             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
 pipe = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-0.9",
-    cache_dir = "/runpod-volume/models",
+    cache_dir = models_dir,
     vae=vae,
     torch_dtype=dtype, 
     variant="fp16",
@@ -43,7 +45,7 @@ if device != 'cuda':
 
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-0.9",
-    cache_dir = "/runpod-volume/models",
+    cache_dir = models_dir,
     vae =vae,
     torch_dtype=dtype,
     use_safetensors=True, 
