@@ -14,11 +14,11 @@ def get_diffusion_pipelines():
     print(F'TOKEN = {os.environ["HUGGING_FACE_HUB_TOKEN"]}')
     from huggingface_hub.hf_api import HfFolder;
     HfFolder.save_token(os.environ["HUGGING_FACE_HUB_TOKEN"])
-    vae = vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae", cache_dir = "//workspace/models")
+    vae = vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae", cache_dir = "/runpod-volume/models")
     pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9", 
                                                      torch_dtype=torch.float16, 
                                                      variant="fp16",
-                                                     cache_dir = "//workspace/models",
+                                                     cache_dir = "/runpod-volume/models",
                                                      use_auth_token=os.environ["HUGGING_FACE_HUB_TOKEN"],
                                                      use_safetensors=True)
 
@@ -26,7 +26,7 @@ def get_diffusion_pipelines():
     refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-refiner-0.9", 
                                                                torch_dtype=torch.float16, 
                                                                use_safetensors=True, 
-                                                               cache_dir = "//workspace/models",
+                                                               cache_dir = "/runpod-volume/models",
                                                                use_auth_token=os.environ["HUGGING_FACE_HUB_TOKEN"],
                                                                variant="fp16")
     
