@@ -19,9 +19,10 @@ from rp_schemas import INPUT_SCHEMA
 
 load_dotenv()
 models_dir =os.getenv("CACHE_DIR", "./models")
-pipe_compile = os.getonv("PIPE_COMPILE", False)
+pipe_compile = os.getenv("PIPE_COMPILE", False)
 print(f'Using models dir: {models_dir}')
-device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
+# device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
+device = "cuda"
 dtype = torch.float16 if device == 'cuda' else torch.float32
 vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae", cache_dir = models_dir)
 # Setup the models
@@ -39,7 +40,7 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 )
 # scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
 # pipe.scheduler = scheduler
-pipe.to(device)
+pipe.to(device, torch.float16)
 if pipe_compile:
     pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 if device != 'cuda':
@@ -53,14 +54,14 @@ refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
     use_safetensors=True, 
     variant="fp16"
 )
-refiner.to(device)
+refiner.to(device, torch.float16)
 if device != 'cuda':
     #pipe.enable_xformers_amp()
     refiner.enable_attention_slicing()
 
 def _save_and_upload_images(images, job_id):
     os.makedirs(f"{job_id}", exist_ok=True)
-    base64_images = []
+    
     response = []
     paths= []
     for index, image in enumerate(images):
@@ -75,6 +76,13 @@ def _save_and_upload_images(images, job_id):
     rp_cleanup.clean([f"/{job_id}"])
     # return base64_images
     return image_urls
+
+def base64images(images, job_id):
+    base64_images = []
+    for img in images: 
+        base64_images.append(base64.b64encode(img.tobytes()))
+    rp_cleanup.clean([f"/{job_id}"])
+    return base64_images
 
 def img2img(job_input, job_id):
     validated_input = validate(job_input, INPUT_SCHEMA)
@@ -132,6 +140,7 @@ def text2text(job_input, job_id):
     refiner_strength = validated_input['validated_input']['refiner_strength']
     guidance_scale = validated_input['validated_input']['guidance_scale']
     height = validated_input['validated_input']['height']
+    base64 = validated_input['validated_input']['base64']
     # Generate latent image using pipe
     print(f"Generating latent image for prompt: {prompt}")
     print(f"Using {num_inference_steps} inference steps")
@@ -169,7 +178,7 @@ def text2text(job_input, job_id):
     else:
         output = pipe_data.images
     start_upload = time.time()
-    images = _save_and_upload_images(output,job_id)
+    images = _save_and_upload_images(output,job_id) if not base64 else base64images(output, job_id)
     end_upload = time.time()
     end = time.time()
     generation_time = end - start
@@ -183,7 +192,8 @@ def text2text(job_input, job_id):
         "samples": num_images_per_prompt,
         "num_inference_steps": num_inference_steps,
         "generation_time": generation_time,
-        "upload_time": upload_time
+        "upload_time": upload_time,
+        "base64": base64
     }
 
 def generate_image(job):

@@ -17,6 +17,11 @@ INPUT_SCHEMA = {
         'required': False,
         'default': True
     },
+     'base64': {
+        'type': bool,
+        'required': False,
+        'default': False
+    },
     'width': {
         'type': int,
         'required': False,
