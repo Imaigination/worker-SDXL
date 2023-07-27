@@ -29,7 +29,7 @@ vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae", cache_dir = models_d
 #             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
 #             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-0.9",
+    "stabilityai/stable-diffusion-xl-base-1.0",
     cache_dir = models_dir,
     vae=vae,
     torch_dtype=dtype, 
@@ -46,7 +46,7 @@ if device != 'cuda':
     pipe.enable_attention_slicing()
 
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-0.9",
+    "stabilityai/stable-diffusion-xl-refiner-1.0",
     cache_dir = models_dir,
     vae =vae,
     torch_dtype=dtype,

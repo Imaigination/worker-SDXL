@@ -16,7 +16,7 @@ def get_diffusion_pipelines():
     from huggingface_hub.hf_api import HfFolder;
     HfFolder.save_token(os.environ["HUGGING_FACE_HUB_TOKEN"])
     vae = vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae", cache_dir = models_dir)
-    pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9", 
+    pipe = StableDiffusionXLPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", 
                                                      torch_dtype=torch.float16, 
                                                      variant="fp16",
                                                      cache_dir = models_dir,
@@ -24,7 +24,7 @@ def get_diffusion_pipelines():
                                                      use_safetensors=True)
 
 
-    refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-refiner-0.9", 
+    refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-refiner-1.0", 
                                                                torch_dtype=torch.float16, 
                                                                use_safetensors=True, 
                                                                cache_dir = models_dir,
