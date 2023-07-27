@@ -19,6 +19,7 @@ from rp_schemas import INPUT_SCHEMA
 
 load_dotenv()
 models_dir =os.getenv("CACHE_DIR", "./models")
+pipe_compile = os.getonv("PIPE_COMPILE", False)
 print(f'Using models dir: {models_dir}')
 device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
 dtype = torch.float16 if device == 'cuda' else torch.float32
@@ -39,7 +40,8 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 # scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
 # pipe.scheduler = scheduler
 pipe.to(device)
-#pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+if pipe_compile:
+    pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 if device != 'cuda':
     pipe.enable_attention_slicing()
 
