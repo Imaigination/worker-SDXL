@@ -4,7 +4,14 @@ Contains the handler function that will be called by the serverless.
 
 import os
 import torch
+import requests
+from io import BytesIO
+import json
 import time
+import boto3
+import uuid
+import botocore
+import threading
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 from diffusers.utils import load_image
 
@@ -20,8 +27,9 @@ from rp_schemas import INPUT_SCHEMA
 load_dotenv()
 models_dir =os.getenv("CACHE_DIR", "./models")
 pipe_compile = os.getenv("PIPE_COMPILE", False)
+print(f'Pipe compile = {pipe_compile}')
 print(f'Using models dir: {models_dir}')
-# device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
+device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
 device = "cuda"
 dtype = torch.float16 if device == 'cuda' else torch.float32
 vae = AutoencoderKL.from_pretrained("stabilityai/sdxl-vae", cache_dir = models_dir)
@@ -40,9 +48,9 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 )
 # scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
 # pipe.scheduler = scheduler
-pipe.to(device, torch.float16)
-if pipe_compile:
-    pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+pipe.to(device, dtype)
+# if pipe_compile:
+#     pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 if device != 'cuda':
     pipe.enable_attention_slicing()
 
@@ -51,10 +59,10 @@ refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
     cache_dir = models_dir,
     vae =vae,
     torch_dtype=dtype,
-    use_safetensors=True, 
+    use_safetensors=True,
     variant="fp16"
 )
-refiner.to(device, torch.float16)
+refiner.to(device, dtype)
 if device != 'cuda':
     #pipe.enable_xformers_amp()
     refiner.enable_attention_slicing()
@@ -62,20 +70,110 @@ if device != 'cuda':
 def _save_and_upload_images(images, job_id):
     os.makedirs(f"{job_id}", exist_ok=True)
     
-    response = []
+    # response = []
     paths= []
-    for index, image in enumerate(images):
-        image_path = os.path.join(f"{job_id}", f"{index}.png")
-        image.save(image_path)
-        paths.append(image_path)
-        
+    # for index, image in enumerate(images):
+    #     image_path = os.path.join(f"{job_id}", f"{index}.png")
+    #     image.save(image_path)
+    #     paths.append(image_path)
+
         # base64_images.append(base64.b64encode(image.tobytes()))
-    image_urls = rp_upload.files(job_id, paths)
-    print(f'URL={image_urls}')
-    response.append(image_urls)
+    print(paths)
+
+    start = time.time()
+    #image_urls = _upload_to_cloudflare(paths)    
+    #image_urls = rp_upload.files(job_id, paths)
+    image_urls = upload_images_v2(images)
+    end = time.time()
+    print(end - start)
+    # print(image_urls)
+    # print(f'URL={image_urls}')
+    # response.append(image_urls)
     rp_cleanup.clean([f"/{job_id}"])
     # return base64_images
+    #return image_urls
     return image_urls
+
+def upload_images_v2(images):
+    result = []
+    threads = []
+    bucket_name = os.getenv('BUCKET_NAME')
+    for index, image in enumerate(images):
+        thread = threading.Thread(target=upload_object_to_space, args=(image, bucket_name, str(uuid.uuid4()) + '.png', result))
+        thread.start()
+        threads.append(thread)
+
+    for thread in threads:
+        thread.join()
+        
+    return result
+
+def upload_object_to_space(image, bucket_name, object_key, result):
+    aws_access_key_id=os.getenv('BUCKET_ACCESS_KEY_ID')
+    aws_secret_access_key=os.getenv('BUCKET_SECRET_ACCESS_KEY')
+    region = os.getenv('BUCKET_REGION')
+    session = boto3.session.Session()
+    output = BytesIO()
+    image.save(output, format='png')
+    output.seek(0)
+    client = session.client('s3',
+                config=botocore.config.Config(s3={'addressing_style': 'virtual'}),
+                region_name=region,
+                endpoint_url=f'https://{region}.digitaloceanspaces.com',
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key)
+    client.put_object(Bucket=bucket_name,
+                  Key=object_key,
+                  Body=output.getvalue(),
+                  ACL='public-read',
+                  ContentType="image/png"
+                  
+                )
+    # print(object_key)
+    # print (result)
+    domain = os.getenv('IMAGE_DOMAIN')
+    image_url = f'{domain}/{object_key}'
+    result.append(image_url)
+
+def upload_image(path, index, result):
+    client_id = os.getenv("CLOUDFLARE_CLIENT_ID")
+    api_key = os.getenv("CLOUDFLARE_API_KEY")
+    url = f"https://api.cloudflare.com/client/v4/accounts/{client_id}/images/v1"
+    payload = {}
+    headers = {
+        'Authorization': f"Bearer {api_key}"
+    }
+    files = [
+        ('file', (f"{index}.png", open(path, 'rb'), 'image/png'))
+    ]
+
+    try:
+        response = requests.post(url, headers=headers, data=payload, files=files)
+        data = response.json()
+
+        public_url = ""
+        for url in data["result"]["variants"]:
+            if "/public" in url:
+                public_url = url
+                break
+
+        result.append(public_url)
+    except Exception as e:
+        print(f"Error uploading image: {e}")
+
+def _upload_to_cloudflare(paths):
+    result = []
+    threads = []
+
+    for index, path in enumerate(paths):
+        thread = threading.Thread(target=upload_image, args=(path, index, result))
+        thread.start()
+        threads.append(thread)
+
+    for thread in threads:
+        thread.join()
+        
+    return result
 
 def base64images(images, job_id):
     base64_images = []
