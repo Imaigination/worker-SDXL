@@ -29,7 +29,8 @@ load_dotenv()
 models_dir =os.getenv("CACHE_DIR", "./models")
 pipe_compile = os.getenv("PIPE_COMPILE", False)
 small_width = 256
-medium_width = 512
+medium_width = 383
+large_width = 512
 print(f'Pipe compile = {pipe_compile}')
 print(f'Using models dir: {models_dir}')
 device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
@@ -110,11 +111,17 @@ def upload_images_v2(images):
         thread = threading.Thread(target=upload_object_to_space, args=(image, bucket_name, key, 'full', result))
         # result.pop(key, {})
         result[key] = {}
+        large = image.resize((large_width, int(medium_width * aratio)), Image.Resampling.LANCZOS)
         medium = image.resize((medium_width, int(medium_width * aratio)), Image.Resampling.LANCZOS)
         small = image.resize((small_width, int(small_width * aratio)), Image.Resampling.LANCZOS)
         
         thread.start()
         threads.append(thread)
+
+        thread_large = threading.Thread(target=upload_object_to_space, args=(large, bucket_name, key, 'medium', result))
+        thread_large.start()
+        threads.append(thread_large)
+
         thread_medium = threading.Thread(target=upload_object_to_space, args=(medium, bucket_name, key, 'medium', result))
         thread_medium.start()
         threads.append(thread_medium)
