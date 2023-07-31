@@ -8,6 +8,7 @@ import requests
 from io import BytesIO
 import json
 import time
+from PIL import Image
 import boto3
 import uuid
 import botocore
@@ -27,6 +28,8 @@ from rp_schemas import INPUT_SCHEMA
 load_dotenv()
 models_dir =os.getenv("CACHE_DIR", "./models")
 pipe_compile = os.getenv("PIPE_COMPILE", False)
+small_width = 256
+medium_width = 512
 print(f'Pipe compile = {pipe_compile}')
 print(f'Using models dir: {models_dir}')
 device: str = ("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
@@ -95,27 +98,46 @@ def _save_and_upload_images(images, job_id):
     return image_urls
 
 def upload_images_v2(images):
-    result = []
+    result = {}
     threads = []
     bucket_name = os.getenv('BUCKET_NAME')
+        
     for index, image in enumerate(images):
-        thread = threading.Thread(target=upload_object_to_space, args=(image, bucket_name, str(uuid.uuid4()) + '.png', result))
+        key = str(uuid.uuid4())
+
+        result.pop(key, {})
+        aratio = image.size[1] / image.size[0]
+        thread = threading.Thread(target=upload_object_to_space, args=(image, bucket_name, key, 'full', result))
+        # result.pop(key, {})
+        result[key] = {}
+        medium = image.resize((medium_width, int(medium_width * aratio)), Image.Resampling.LANCZOS)
+        small = image.resize((small_width, int(small_width * aratio)), Image.Resampling.LANCZOS)
+        
         thread.start()
         threads.append(thread)
+        thread_medium = threading.Thread(target=upload_object_to_space, args=(medium, bucket_name, key, 'medium', result))
+        thread_medium.start()
+        threads.append(thread_medium)
+
+        thread_small = threading.Thread(target=upload_object_to_space, args=(small, bucket_name, key, 'small', result))
+        thread_small.start()
+        threads.append(thread_small)
+
 
     for thread in threads:
         thread.join()
         
     return result
 
-def upload_object_to_space(image, bucket_name, object_key, result):
+def upload_object_to_space(image, bucket_name, object_key, postfix, result):
     aws_access_key_id=os.getenv('BUCKET_ACCESS_KEY_ID')
     aws_secret_access_key=os.getenv('BUCKET_SECRET_ACCESS_KEY')
     region = os.getenv('BUCKET_REGION')
     session = boto3.session.Session()
     output = BytesIO()
-    image.save(output, format='png')
+    image.save(output, format='png')    
     output.seek(0)
+    image_name = f'{object_key}_{postfix}.png'
     client = session.client('s3',
                 config=botocore.config.Config(s3={'addressing_style': 'virtual'}),
                 region_name=region,
@@ -123,17 +145,16 @@ def upload_object_to_space(image, bucket_name, object_key, result):
                 aws_access_key_id=aws_access_key_id,
                 aws_secret_access_key=aws_secret_access_key)
     client.put_object(Bucket=bucket_name,
-                  Key=object_key,
+                  Key=image_name,
                   Body=output.getvalue(),
                   ACL='public-read',
                   ContentType="image/png"
                   
                 )
-    # print(object_key)
-    # print (result)
     domain = os.getenv('IMAGE_DOMAIN')
-    image_url = f'{domain}/{object_key}'
-    result.append(image_url)
+    image_url = f'{domain}/{image_name}'
+    result[object_key][postfix] = image_url
+    #result.append(image_url)
 
 def upload_image(path, index, result):
     client_id = os.getenv("CLOUDFLARE_CLIENT_ID")
