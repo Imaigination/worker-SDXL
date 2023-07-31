@@ -118,7 +118,7 @@ def upload_images_v2(images):
         thread.start()
         threads.append(thread)
 
-        thread_large = threading.Thread(target=upload_object_to_space, args=(large, bucket_name, key, 'medium', result))
+        thread_large = threading.Thread(target=upload_object_to_space, args=(large, bucket_name, key, 'large', result))
         thread_large.start()
         threads.append(thread_large)
 
