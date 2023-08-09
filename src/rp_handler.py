@@ -12,6 +12,7 @@ from PIL import Image
 import boto3
 import uuid
 import botocore
+import gc
 import threading
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 from diffusers.utils import load_image
@@ -247,7 +248,31 @@ def img2img(job_input, job_id):
         "generation_time": generation_time
     }
 
+def load_lora_from_s3(lora_key, folder_to_save='lora'):
+    os.makedirs(folder_to_save, exist_ok=True)
+    name = lora_key.split('/')[-1]
+    file_name = f'{folder_to_save}/{name}'
+    if (os.path.isfile(file_name)):
+        print('Lora file already existis. Returns cached')
+        return name
+    aws_access_key_id=os.getenv('BUCKET_ACCESS_KEY_ID')
+    aws_secret_access_key=os.getenv('BUCKET_SECRET_ACCESS_KEY')
+    region = os.getenv('BUCKET_REGION')
+    bucket_name = os.getenv('BUCKET_NAME_LORA')
+    session = boto3.session.Session()
+   
+    client = session.client('s3',
+                config=botocore.config.Config(s3={'addressing_style': 'virtual'}),
+                region_name=region,
+                endpoint_url=f'https://{region}.digitaloceanspaces.com',
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key)
+
+    client.download_file(bucket_name, lora_key, file_name)
+    return name
+
 def text2text(job_input, job_id):
+    gc.collect()
     validated_input = validate(job_input, INPUT_SCHEMA)
 
     if 'errors' in validated_input:
@@ -273,6 +298,13 @@ def text2text(job_input, job_id):
     print(f"Generating {num_images_per_prompt} images per prompt")
     print(f"Image size: {width}x{height}")
     print(f'Validated input: {validated_input}')
+    lora_key = validated_input['validated_input']['lora_key']
+    if lora_key:
+        lora_file = load_lora_from_s3(lora_key)
+        pipe.load_lora_weights(
+            "lora/",
+            weight_name=lora_file
+        )
     with_refiner = refiner_strength > 0
     steps = num_inference_steps if not  with_refiner else num_inference_steps * (1 - refiner_strength)
     output_type = 'pil' if not with_refiner else 'latent'
@@ -284,7 +316,6 @@ def text2text(job_input, job_id):
                     height=height,
                     num_images_per_prompt=num_images_per_prompt,
                     num_inference_steps=steps,
-                    
                     output_type=output_type)
     print(f'Use refiner = {with_refiner}, output type = {output_type}')
     # Refine the image using refiner
@@ -304,6 +335,8 @@ def text2text(job_input, job_id):
     else:
         output = pipe_data.images
     start_upload = time.time()
+    if lora_key:
+        pipe.unload_lora_weights()
     images = _save_and_upload_images(output,job_id) if not base64 else base64images(output, job_id)
     end_upload = time.time()
     end = time.time()
