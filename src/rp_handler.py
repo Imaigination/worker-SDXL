@@ -14,6 +14,7 @@ import uuid
 import botocore
 import gc
 import threading
+from compel import Compel, ReturnedEmbeddingsType
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 from diffusers.utils import load_image
 
@@ -25,12 +26,14 @@ from runpod.serverless.utils.rp_validator import validate
 from dotenv import load_dotenv
 from diffusers.schedulers import DDIMScheduler,LMSDiscreteScheduler,PNDMScheduler
 from rp_schemas import INPUT_SCHEMA
+from rp_schemas_pack import INPUT_SCHEMA_PACK
 
 load_dotenv()
 models_dir =os.getenv("CACHE_DIR", "./models")
 pipe_compile = os.getenv("PIPE_COMPILE", False)
 small_width = 256
-medium_width = 383
+medium_width = 384
+preview_width = 384
 large_width = 512
 print(f'Pipe compile = {pipe_compile}')
 print(f'Using models dir: {models_dir}')
@@ -54,6 +57,9 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 # scheduler = PNDMScheduler.from_config(pipe.scheduler.config)
 # pipe.scheduler = scheduler
 pipe.to(device, dtype)
+
+compel = Compel(tokenizer=[pipe.tokenizer, pipe.tokenizer_2] , text_encoder=[pipe.text_encoder, pipe.text_encoder_2], returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED, requires_pooled=[False, True])
+
 # if pipe_compile:
 #     pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 if device != 'cuda':
@@ -71,6 +77,23 @@ refiner.to(device, dtype)
 if device != 'cuda':
     #pipe.enable_xformers_amp()
     refiner.enable_attention_slicing()
+
+def _save_and_upload_pack(generations, job_id):
+    os.makedirs(f"{job_id}", exist_ok=True)
+    
+    # response = []
+    paths= []
+    index = 0
+    for generation in generations:
+        for image in generation["images"]:
+            image_path = os.path.join(f"{job_id}", f"{index}.png")
+            index = index + 1
+            image.save(image_path)
+            paths.append(image_path)
+
+    upload_pack(generations)
+    rp_cleanup.clean([f"/{job_id}"])
+    return generations
 
 def _save_and_upload_images(images, job_id):
     os.makedirs(f"{job_id}", exist_ok=True)
@@ -98,6 +121,43 @@ def _save_and_upload_images(images, job_id):
     # return base64_images
     #return image_urls
     return image_urls
+
+def upload_pack(generations):
+    
+    threads = []
+    bucket_name = os.getenv('BUCKET_NAME')
+        
+    for generation in generations:
+        result = []
+        for image in generation["images"]:
+            key = str(uuid.uuid4())
+            image_result = {
+                "image_key": key
+            }
+            #result.pop(key, {})
+            result.append(image_result)
+            aratio = image.size[1] / image.size[0]
+            thread = threading.Thread(target=upload_object_to_space, args=(image, bucket_name, key, 'full', image_result, True))
+            # result.pop(key, {})
+            #result[key] = {}
+            medium = image.resize((preview_width, int(preview_width * aratio)), Image.Resampling.LANCZOS)
+            
+            thread.start()
+            threads.append(thread)
+
+            thread_medium = threading.Thread(target=upload_object_to_space, args=(medium, bucket_name, key, 'medium', image_result, True))
+            thread_medium.start()
+            threads.append(thread_medium)
+
+            
+        generation["images"] = result
+
+
+    for thread in threads:
+        thread.join()
+        
+    return result
+
 
 def upload_images_v2(images):
     result = {}
@@ -137,7 +197,7 @@ def upload_images_v2(images):
         
     return result
 
-def upload_object_to_space(image, bucket_name, object_key, postfix, result):
+def upload_object_to_space(image, bucket_name, object_key, postfix, result, add_to_object = False):
     aws_access_key_id=os.getenv('BUCKET_ACCESS_KEY_ID')
     aws_secret_access_key=os.getenv('BUCKET_SECRET_ACCESS_KEY')
     region = os.getenv('BUCKET_REGION')
@@ -161,8 +221,10 @@ def upload_object_to_space(image, bucket_name, object_key, postfix, result):
                 )
     domain = os.getenv('IMAGE_DOMAIN')
     image_url = f'{domain}/{image_name}'
-    result[object_key][postfix] = image_url
-    #result.append(image_url)
+    if not add_to_object:
+        result[object_key][postfix] = image_url
+    else:
+        result[postfix] = image_url
 
 def upload_image(path, index, result):
     client_id = os.getenv("CLOUDFLARE_CLIENT_ID")
@@ -271,6 +333,79 @@ def load_lora_from_s3(lora_key, folder_to_save='lora'):
     client.download_file(bucket_name, lora_key, file_name)
     return name
 
+def pack(job_input, job_id):
+    gc.collect()
+    print('Doing Pack')
+    validated_input = validate(job_input, INPUT_SCHEMA_PACK)
+
+    if 'errors' in validated_input:
+        return {"error": validated_input['errors']}
+    
+    seed = validated_input['validated_input']['seed']
+    if seed is None:
+        seed = int.from_bytes(os.urandom(4), "big")
+    start = time.time()
+    
+   
+    pack = validated_input['validated_input']['pack']
+    lora_key = validated_input['validated_input']['lora_key']
+    # Generate latent image using pipe
+    # with_refiner = refiner_strength > 0
+    # steps = num_inference_steps if not  with_refiner else num_inference_steps * (1 - refiner_strength)
+    # output_type = 'pil' if not with_refiner else 'latent'
+    lora_file = load_lora_from_s3(lora_key)
+    pipe.load_lora_weights(
+        "lora/",
+        weight_name=lora_file
+    )
+
+    # Refine the image using refiner
+    generator = torch.Generator("cuda").manual_seed(seed)
+    
+    for pack_item in pack:
+        prompt = pack_item['prompt']
+        width = pack_item['width']
+        guidance_scale = pack_item['guidance_scale']
+        negative_prompt = pack_item['negative_prompt']
+        height = pack_item['height']
+        num_images_per_prompt = pack_item['samples']
+        steps = pack_item['num_inference_steps']
+        output_type = 'pil'
+        conditioning, pooled = compel(prompt)
+        output = []
+        pipe_data = pipe(prompt_embeds=conditioning,
+                    pooled_prompt_embeds=pooled,
+                    width=width,
+                    guidance_scale=guidance_scale,
+                    negative_prompt= negative_prompt,
+                    generator=generator,
+                    height=height,
+                    num_images_per_prompt=num_images_per_prompt,
+                    num_inference_steps=steps,                    
+                    output_type=output_type)
+        for image in pipe_data.images:
+            output.append(image)
+        pack_item["images"] = output
+    pipe.unload_lora_weights()
+    start_upload = time.time()
+    data = _save_and_upload_pack(pack,job_id)
+    end_upload = time.time()
+    end = time.time()
+    generation_time = end - start
+    upload_time = end_upload - start_upload
+    return {
+        "data": data,
+        "seed": seed,
+        # "prompt": prompt,
+        # "width": width,
+        # "height": height,
+        # "samples": num_images_per_prompt,
+        # "num_inference_steps": num_inference_steps,
+        "generation_time": generation_time,
+        "upload_time": upload_time,
+        # "base64": base64
+    }
+
 def text2text(job_input, job_id):
     gc.collect()
     validated_input = validate(job_input, INPUT_SCHEMA)
@@ -365,6 +500,10 @@ def generate_image(job):
         return text2text(job_input, job['id'])
     elif api_name == 'img2img':
         return img2img(job_input, job['id'])
+    # elif api_name == 'avatars':
+    #     return avatars(job_input, job['id'])
+    elif api_name == 'pack':
+        return pack(job_input, job['id'])
     # Input validation
     return text2text(job_input, job['id'])
 

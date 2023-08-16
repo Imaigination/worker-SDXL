@@ -10,3 +10,4 @@ invisible-watermark
 runpod==0.10.0
 xformers==0.0.20
 huggingface-hub
+compel
