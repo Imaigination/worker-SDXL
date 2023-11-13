@@ -17,6 +17,10 @@ INPUT_SCHEMA_PACK = {
         'type': object,
         'required': False,
         'default': False
+    },
+    'training_id': {
+        'type': str,
+        'required': False,
     }
    
 }

@@ -15,6 +15,7 @@ import botocore
 import gc
 import threading
 from compel import Compel, ReturnedEmbeddingsType
+
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 from diffusers.utils import load_image
 
@@ -27,6 +28,7 @@ from dotenv import load_dotenv
 from diffusers.schedulers import DDIMScheduler,LMSDiscreteScheduler,PNDMScheduler
 from rp_schemas import INPUT_SCHEMA
 from rp_schemas_pack import INPUT_SCHEMA_PACK
+from replicate_download import download_safetensors_by_training_id
 
 load_dotenv()
 models_dir =os.getenv("CACHE_DIR", "./models")
@@ -172,7 +174,7 @@ def upload_images_v2(images):
         thread = threading.Thread(target=upload_object_to_space, args=(image, bucket_name, key, 'full', result))
         # result.pop(key, {})
         result[key] = {}
-        large = image.resize((large_width, int(medium_width * aratio)), Image.Resampling.LANCZOS)
+        large = image.resize((large_width, int(large_width * aratio)), Image.Resampling.LANCZOS)
         medium = image.resize((medium_width, int(medium_width * aratio)), Image.Resampling.LANCZOS)
         small = image.resize((small_width, int(small_width * aratio)), Image.Resampling.LANCZOS)
         
@@ -310,6 +312,9 @@ def img2img(job_input, job_id):
         "generation_time": generation_time
     }
 
+def load_lora_from_replicate(training_id, folder_to_save='lora'):
+    os.makedirs(folder_to_save, exist_ok=True)
+
 def load_lora_from_s3(lora_key, folder_to_save='lora'):
     os.makedirs(folder_to_save, exist_ok=True)
     name = lora_key.split('/')[-1]
@@ -349,21 +354,32 @@ def pack(job_input, job_id):
    
     pack = validated_input['validated_input']['pack']
     lora_key = validated_input['validated_input']['lora_key']
+   
     # Generate latent image using pipe
     # with_refiner = refiner_strength > 0
     # steps = num_inference_steps if not  with_refiner else num_inference_steps * (1 - refiner_strength)
     # output_type = 'pil' if not with_refiner else 'latent'
-    lora_file = load_lora_from_s3(lora_key)
-    pipe.load_lora_weights(
-        "lora/",
-        weight_name=lora_file
-    )
+    training_id = validated_input['validated_input']['training_id']
+    if training_id is None:
 
+        lora_file = load_lora_from_s3(lora_key)
+        pipe.load_lora_weights(
+            "lora/",
+            weight_name=lora_file
+        )
+    else:
+        lora_path = download_safetensors_by_training_id(training_id)
+        pipe.load_lora_weights(
+            lora_path,
+            weight_name='lora.safetensors'
+        )
     # Refine the image using refiner
     generator = torch.Generator("cuda").manual_seed(seed)
     
     for pack_item in pack:
         prompt = pack_item['prompt']
+        if training_id:
+            prompt = prompt.replace('SKS', '<s0><s1>')
         width = pack_item['width']
         guidance_scale = pack_item['guidance_scale']
         negative_prompt = pack_item['negative_prompt']
@@ -415,7 +431,7 @@ def text2text(job_input, job_id):
     
     seed = validated_input['validated_input']['seed']
     if seed is None:
-            seed = int.from_bytes(os.urandom(2), "big")
+            seed = int.from_bytes(os.urandom(4), "big")
     start = time.time()
     generator = torch.Generator("cuda").manual_seed(seed)
     prompt = validated_input['validated_input']['prompt']
@@ -439,6 +455,13 @@ def text2text(job_input, job_id):
         pipe.load_lora_weights(
             "lora/",
             weight_name=lora_file
+        )
+    training_id = validated_input['validated_input']['training_id']
+    if training_id is not None:
+        lora_path = download_safetensors_by_training_id(training_id)
+        pipe.load_lora_weights(
+            lora_path,
+            weight_name='lora.safetensors'
         )
     with_refiner = refiner_strength > 0
     steps = num_inference_steps if not  with_refiner else num_inference_steps * (1 - refiner_strength)
