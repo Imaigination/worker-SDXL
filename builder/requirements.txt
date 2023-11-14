@@ -11,3 +11,4 @@ runpod==0.10.0
 xformers==0.0.20
 huggingface-hub
 compel
+replicate>=0.18.1
