@@ -6,6 +6,7 @@ INPUT_SCHEMA = {
     'training_id': {
         'type': str,
         'required': False,
+        'default': None
     },
     'prompt': {
         'type': str,
