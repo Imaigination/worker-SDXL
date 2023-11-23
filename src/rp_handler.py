@@ -86,12 +86,12 @@ def _save_and_upload_pack(generations, job_id):
     # response = []
     paths= []
     index = 0
-    for generation in generations:
-        for image in generation["images"]:
-            image_path = os.path.join(f"{job_id}", f"{index}.png")
-            index = index + 1
-            image.save(image_path)
-            paths.append(image_path)
+    # for generation in generations:
+    #     for image in generation["images"]:
+    #         image_path = os.path.join(f"{job_id}", f"{index}.png")
+    #         index = index + 1
+    #         image.save(image_path)
+    #         paths.append(image_path)
 
     upload_pack(generations)
     rp_cleanup.clean([f"/{job_id}"])
