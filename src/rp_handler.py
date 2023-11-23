@@ -200,33 +200,36 @@ def upload_images_v2(images):
     return result
 
 def upload_object_to_space(image, bucket_name, object_key, postfix, result, add_to_object = False):
-    aws_access_key_id=os.getenv('BUCKET_ACCESS_KEY_ID')
-    aws_secret_access_key=os.getenv('BUCKET_SECRET_ACCESS_KEY')
-    region = os.getenv('BUCKET_REGION')
-    session = boto3.session.Session()
-    output = BytesIO()
-    image.save(output, format='png')    
-    output.seek(0)
-    image_name = f'{object_key}_{postfix}.png'
-    client = session.client('s3',
-                config=botocore.config.Config(s3={'addressing_style': 'virtual'}),
-                region_name=region,
-                endpoint_url=f'https://{region}.digitaloceanspaces.com',
-                aws_access_key_id=aws_access_key_id,
-                aws_secret_access_key=aws_secret_access_key)
-    client.put_object(Bucket=bucket_name,
-                  Key=image_name,
-                  Body=output.getvalue(),
-                  ACL='public-read',
-                  ContentType="image/png"
-                  
-                )
-    domain = os.getenv('IMAGE_DOMAIN')
-    image_url = f'{domain}/{image_name}'
-    if not add_to_object:
-        result[object_key][postfix] = image_url
-    else:
-        result[postfix] = image_url
+    try:        
+        aws_access_key_id=os.getenv('BUCKET_ACCESS_KEY_ID')
+        aws_secret_access_key=os.getenv('BUCKET_SECRET_ACCESS_KEY')
+        region = os.getenv('BUCKET_REGION')
+        session = boto3.session.Session()
+        output = BytesIO()
+        image.save(output, format='png')    
+        output.seek(0)
+        image_name = f'{object_key}_{postfix}.png'
+        client = session.client('s3',
+                    config=botocore.config.Config(s3={'addressing_style': 'virtual'}),
+                    region_name=region,
+                    endpoint_url=f'https://{region}.digitaloceanspaces.com',
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key)
+        client.put_object(Bucket=bucket_name,
+                    Key=image_name,
+                    Body=output.getvalue(),
+                    ACL='public-read',
+                    ContentType="image/png"
+                    
+                    )
+        domain = os.getenv('IMAGE_DOMAIN')
+        image_url = f'{domain}/{image_name}'
+        if not add_to_object:
+            result[object_key][postfix] = image_url
+        else:
+            result[postfix] = image_url
+    except Exception as e:
+        print(f"Error uploading image: {e}")
 
 def upload_image(path, index, result):
     client_id = os.getenv("CLOUDFLARE_CLIENT_ID")
